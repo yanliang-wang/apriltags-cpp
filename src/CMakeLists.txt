@@ -21,6 +21,9 @@ target_link_libraries(camtest ${AT_LIBS})
 add_executable(tagtest tagtest.cpp)
 target_link_libraries(tagtest ${AT_LIBS})
 
+add_executable(single_tagtest single_tagtest.cpp)
+target_link_libraries(single_tagtest ${AT_LIBS})
+
 add_executable(quadtest quadtest.cpp)
 target_link_libraries(quadtest ${AT_LIBS})
 
