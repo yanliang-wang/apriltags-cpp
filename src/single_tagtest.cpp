@@ -20,8 +20,8 @@
 
 #define DEFAULT_TAG_FAMILY "Tag36h11"
 
-void getCorners(const cv::Mat& im , cv::Point2d corners[])
-{
+void getInitCorners(const cv::Mat& im , cv::Point2d corners[])
+{   //根据每个分割出来的图像来得到角点
     // up , down
     for(int i = 0; i < im.rows - 1 ; i++)
     {
@@ -108,14 +108,24 @@ void getCorners(const cv::Mat& im , cv::Point2d corners[])
     }
 
 }
-int main(int argc, char** argv) {
 
-    const std::string win = "Single tag test";
+bool compareCorners(const cv::Point2d corners1[] ,const cv::Point2d corners2[])
+{
+    cv::Point2d center1 = ( corners1[0] + corners1[2])/2;
+    cv::Point2d distance1_vector = corners1[0] - center1;
+    double distance1 = cv::sqrt( distance1_vector.x*distance1_vector.x +
+                                    distance1_vector.y*distance1_vector.y );
+    cv::Point2d center2 = ( corners2[0] + corners2[2])/2;
+    cv::Point2d distance2_vector = corners2[0] - center2;
+    double distance2 = cv::sqrt( distance2_vector.x*distance2_vector.x +
+                                         distance2_vector.y*distance2_vector.y );
+    return distance1 > distance2;
+
+}
+
+void getCorners(const cv::Mat& src , cv::Point2d corners_max[] ,double error_fraction)
+{
     const std::string family_str = "Tag16h5";
-    double error_fraction ;
-    std::stringstream ss;
-    ss << argv[1];
-    ss >> error_fraction;
     TagFamily family(family_str);
     TagDetectorParams params;
     params.adaptiveThresholdRadius += (params.adaptiveThresholdRadius+1) % 2;
@@ -123,77 +133,71 @@ int main(int argc, char** argv) {
         family.setErrorRecoveryFraction(error_fraction);
     }
 
+    //识别
     TagDetector detector(family, params);
     detector.debug = false;//默认为false
-    detector.debugWindowName = win;
+//    detector.debugWindowName = win;
     TagDetectionArray detections;
-
-    char file_name[100] ;
-    for (int i = 2; i < 4; ++i) {
-        sprintf(file_name, "/home/wang/wang/git_files/apriltags-cpp/images/image_orig/%d.jpg", i);
-        cv::Mat src = cv::imread(file_name);
-        if (src.empty()) { continue; }
-        cv::Point2d opticalCenter(0.5*src.rows, 0.5*src.cols);
-
-        clock_t start = clock();
-        detector.process(src, opticalCenter, detections);
-        clock_t end = clock();
-        //显示识别结果
-        std::cout << "Got " << detections.size() << " detections in "
-        << double(end-start)/CLOCKS_PER_SEC << " seconds.\n";
+    cv::Point2d opticalCenter(0.5*src.rows, 0.5*src.cols);
+    clock_t start = clock();
+    detector.process(src, opticalCenter, detections);
+    clock_t end = clock();
+    //显示识别结果
+    std::cout << "Got " << detections.size() << " detections in "
+    << double(end-start)/CLOCKS_PER_SEC << " seconds.\n";
 //        cv::Mat img = family.superimposeDetections(src, detections);
 //        labelAndWaitForKey(win, "Detected", img, ScaleNone, true);
-        //获取角点
-        for (size_t i=0; i<detections.size(); ++i) {
-            cv::Mat img = family.detectionImage(detections[i], src.size(), src.type());
-            cv::Point2d corners[4];
-            clock_t start = clock();
-            getCorners(img,corners);
+    //获取角点
+    // corners_max[4]; //最大的tag的角点
+    //std::cout << corners_max[0] <<std::endl;
+    for (size_t i=0; i<detections.size(); ++i) {
+        cv::Mat img = family.detectionImage(detections[i], src.size(), src.type());
+        cv::Point2d corners_tmp[4];
+        clock_t start = clock();
+        getInitCorners(img,corners_tmp);
+        if( compareCorners(corners_tmp , corners_max) )
+        {
+            for(int j = 0; j < 4; j++)
+            {
+                corners_max[j] = corners_tmp[j];
+            }
+
             clock_t end = clock();
             std::cout << "Got corners in "
                       << double(end-start)/CLOCKS_PER_SEC << " seconds.\n";
-/*            const TagDetection& d = detections[i];
-            std::cout<<src.type()<<std::endl;
-            cv::Mat dst(src.size(), src.type());
-            cv::Mat im = family.makeImage(d.id);
-            if (im.depth() != dst.depth()) {
-                cv::Mat i2;
-                at::real scl = 1.0;
-                if (dst.depth() == CV_32F || dst.depth() == CV_64F) {
-                    scl = 1.0/255;
-                }
-                im.convertTo(i2, scl);
-                im = i2;
-            }
-            if (im.channels() < dst.channels()) {
-                cv::Mat i2;
-                cv::cvtColor(im, i2, cv::COLOR_GRAY2RGB);
-                im = i2;
-            }
-            cv::Mat W = family.getWarp(detections[i]);
-            std::cout << "W: \n" << W << "\n" <<std::endl;
+        }
+    }
+    return;
+}
 
-            cv::Mat pts_src = (cv::Mat_<float>(4,3) <<
-                    0,0,1,
-                    im.cols - 1, 0 ,1,
-                    im.cols - 1, im.rows -1 ,1,
-                    0, im.rows - 1 , 1);
-//            std::cout << pts_src.t() <<std::endl;
-            cv::Mat corners = W * pts_src.t();
-            std::cout << "corners: \n" << corners << "\n" <<std::endl;*/
+int main(int argc, char** argv) {
 
-            for (uint32_t i = 0; i < 4; i++)
-            {
-                uint32_t next = (i== 4-1)?0:i+1;
-                cv::Point2d p0 = corners[i];
-                cv::Point2d p1 = corners[next];
-                // draw vertex
-                cv::circle(src, p0, double(src.rows) /150 , cv::Scalar(0,0,255),src.rows/150 + 3);
-                // draw line
-                cv::line(src,p0, p1, cv::Scalar(0,255,0) , src.rows/200);
-            }
+    const std::string win = "Single tag test";
+    double error_fraction ;
+    std::stringstream ss;
+    ss << argv[1];
+    ss >> error_fraction;
+
+    char file_name[100] ;
+    for (int i = 0; i < 9; ++i) {
+        cv::Point2d corners[4];
+        sprintf(file_name, "/home/wang/wang/git_files/apriltags-cpp/images/image_orig/%d.jpg", i);
+        cv::Mat src = cv::imread(file_name);
+        if (src.empty()) { continue; }
+        getCorners(src,corners,error_fraction);
+        for (uint32_t i = 0; i < 4; i++)
+        {
+            uint32_t next = (i== 4-1)?0:i+1;
+            cv::Point2d p0 = corners[i];
+            cv::Point2d p1 = corners[next];
+            // draw vertex
+            cv::circle(src, p0, double(src.rows) /150 , cv::Scalar(0,0,255),src.rows/150 + 3);
+            // draw line
+            cv::line(src,p0, p1, cv::Scalar(0,255,0) , src.rows/200);
         }
         labelAndWaitForKey(win, "Detected", src, ScaleNone, true);
+
+
     }
     std::cout<<std::endl;
 //    detector.reportTimers();
